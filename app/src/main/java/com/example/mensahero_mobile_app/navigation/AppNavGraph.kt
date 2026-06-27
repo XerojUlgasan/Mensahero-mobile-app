@@ -73,6 +73,7 @@ fun AppNavGraph(
 
         composable(Routes.Dashboard.route) {
             DashboardScreenWrapper(
+                context = context,
                 onNavigateToKeys = {
                     navController.navigate(Routes.Keys.route) {
                         popUpTo(Routes.Dashboard.route) { saveState = true }

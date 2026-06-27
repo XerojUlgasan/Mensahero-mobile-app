@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,7 +24,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import com.example.mensahero_mobile_app.data.model.SimInfo
+import com.example.mensahero_mobile_app.viewmodel.DashboardViewModel
+import com.example.mensahero_mobile_app.viewmodel.DashboardState
 
 // Colors
 private val BgBlack = Color(0xFF0A0A0A)
@@ -52,6 +58,90 @@ data class AgentInfo(
 )
 
 // ── Sub-components ───────────────────────────────────────────
+
+@Composable
+fun SimSelectionDialog(
+    sims: List<SimInfo>,
+    onSimSelected: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = SurfaceDark,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Text(
+                    text = "Select SIM Card",
+                    color = White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "Choose the SIM to use for sending messages",
+                    color = TextMuted,
+                    fontSize = 14.sp
+                )
+                
+                Spacer(modifier = Modifier.height(20.dp))
+                
+                sims.forEach { sim ->
+                    Surface(
+                        onClick = { onSimSelected(sim.subscriptionId) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF2A2A2A),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.SimCard,
+                                contentDescription = null,
+                                tint = White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            
+                            Spacer(modifier = Modifier.width(12.dp))
+                            
+                            Column {
+                                Text(
+                                    text = sim.carrierName,
+                                    color = White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = if (sim.phoneNumber.isNullOrBlank()) "Number hidden" 
+                                           else sim.phoneNumber,
+                                    color = TextMuted,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.weight(1f))
+                            
+                            Text(
+                                text = "SIM ${sim.slotIndex + 1}",
+                                color = TextMuted,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun StatCard(stat: StatItem, modifier: Modifier = Modifier) {
@@ -212,35 +302,31 @@ fun MensaBottomNav(
 
 @Composable
 fun DashboardScreen(
+    viewModel: DashboardViewModel,
     onNavSelected: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     var selectedNav by remember { mutableIntStateOf(0) }
-    var agentActive by remember { mutableStateOf(true) }
+    val state by viewModel.state.collectAsState()
+    
+    val swipeRefreshState = rememberSwipeRefreshState(
+        isRefreshing = state.isFetching
+    )
 
-    val activeSimCount = remember {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
-            val sm = context.getSystemService(SubscriptionManager::class.java)
-            sm?.activeSubscriptionInfoList?.size ?: 0
-        } else 0
-    }
-
-    val simLabel = if (activeSimCount == 0) "—" else "$activeSimCount / $activeSimCount"
+    val simLabel = if (state.chosenSimId != null) "Selected" else "Not set"
 
     val stats = listOf(
-        StatItem("Messages Today", "1,284", Icons.Outlined.ChatBubbleOutline),
-        StatItem("Delivery Rate", "98.3%", Icons.Outlined.TrendingUp),
-        StatItem("Active SIMs", simLabel, Icons.Outlined.SimCard),
-        StatItem("Last Activity", "2 min ago", Icons.Outlined.AccessTime)
+        StatItem("Messages Today", state.totalMessagesFetched.toString(), Icons.Outlined.ChatBubbleOutline),
+        StatItem("Delivery Rate", "${String.format("%.1f", viewModel.getDeliveryRate())}%", Icons.Outlined.TrendingUp),
+        StatItem("Chosen SIM", simLabel, Icons.Outlined.SimCard),
+        StatItem("Last Activity", viewModel.getLastActivityText(), Icons.Outlined.AccessTime)
     )
 
     val agent = AgentInfo(
         name = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
-        isOnline = true,
-        uptime = "14h 32m",
-        gateway = "gateway.mensahero.dev"
+        isOnline = state.agentActive,
+        uptime = viewModel.getUptimeText(),
+        gateway = viewModel.getApiUrl()
     )
 
     Scaffold(
@@ -255,103 +341,146 @@ fun DashboardScreen(
             )
         }
     ) { innerPadding ->
-        Column(
+        SwipeRefresh(
+            state = swipeRefreshState,
+            onRefresh = {
+                if (state.canRefresh && !state.isFetching && !state.isProcessing) {
+                    viewModel.manualRefresh()
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .statusBarsPadding()
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Top bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .statusBarsPadding()
             ) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Top bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "MensaHERO",
+                        color = White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.3).sp
+                    )
+
+                    // Active toggle
+                    Column(horizontalAlignment = Alignment.End) {
+                        Switch(
+                            checked = state.agentActive,
+                            onCheckedChange = { viewModel.toggleAgentActive(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = White,
+                                checkedTrackColor = GreenDim,
+                                uncheckedThumbColor = TextMuted,
+                                uncheckedTrackColor = SurfaceDark,
+                                uncheckedBorderColor = BorderColor
+                            ),
+                            modifier = Modifier.height(28.dp)
+                        )
+                        Text(
+                            text = if (state.agentActive) "Active" else "Inactive",
+                            color = if (state.agentActive) GreenActive else TextMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // Processing indicator
+                if (state.isProcessing) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF1A3A2A),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = GreenActive,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Processing ${state.processingMessageCount} messages...",
+                                color = GreenActive,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                // Page title
                 Text(
-                    text = "MensaHERO",
+                    text = "Dashboard",
                     color = White,
-                    fontSize = 18.sp,
+                    fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.3).sp
+                    letterSpacing = (-0.5).sp
                 )
 
-                // Active toggle
-                Column(horizontalAlignment = Alignment.End) {
-                    Switch(
-                        checked = agentActive,
-                        onCheckedChange = { agentActive = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = White,
-                            checkedTrackColor = GreenDim,
-                            uncheckedThumbColor = TextMuted,
-                            uncheckedTrackColor = SurfaceDark,
-                            uncheckedBorderColor = BorderColor
-                        ),
-                        modifier = Modifier.height(28.dp)
-                    )
-                    Text(
-                        text = if (agentActive) "Active" else "Inactive",
-                        color = if (agentActive) GreenActive else TextMuted,
-                        fontSize = 11.sp
-                    )
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 2×2 stat grid
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    StatCard(stats[0], modifier = Modifier.weight(1f))
+                    StatCard(stats[1], modifier = Modifier.weight(1f))
                 }
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    StatCard(stats[2], modifier = Modifier.weight(1f))
+                    StatCard(stats[3], modifier = Modifier.weight(1f))
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // Agent status header
+                Text(
+                    text = "AGENT STATUS",
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.2.sp
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                AgentStatusCard(agent)
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // Page title
-            Text(
-                text = "Dashboard",
-                color = White,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.5).sp
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // 2×2 stat grid
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard(stats[0], modifier = Modifier.weight(1f))
-                StatCard(stats[1], modifier = Modifier.weight(1f))
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard(stats[2], modifier = Modifier.weight(1f))
-                StatCard(stats[3], modifier = Modifier.weight(1f))
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // Agent status header
-            Text(
-                text = "AGENT STATUS",
-                color = TextMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.2.sp
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            AgentStatusCard(agent)
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+    
+    if (state.showSimSelection) {
+        SimSelectionDialog(
+            sims = state.availableSims,
+            onSimSelected = { viewModel.selectSim(it) },
+            onDismiss = { }
+        )
     }
 }
 
-@Preview(
-    showBackground = true,
-    backgroundColor = 0xFF0A0A0A,
-    widthDp = 375,
-    heightDp = 812
-)
-@Composable
-fun DashboardScreenPreview() {
-    DashboardScreen()
-}
