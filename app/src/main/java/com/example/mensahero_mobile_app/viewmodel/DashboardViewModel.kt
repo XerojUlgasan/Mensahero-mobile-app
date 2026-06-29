@@ -54,6 +54,7 @@ class DashboardViewModel(context: Context) : ViewModel() {
     private var activeSince: Long = 0
     
     init {
+        android.util.Log.d("DashboardViewModel", "DashboardViewModel init")
         loadPreferences()
         loadAvailableSims()
         startUptimeTracking()
@@ -152,11 +153,18 @@ class DashboardViewModel(context: Context) : ViewModel() {
     }
     
     private fun startFetching() {
+        android.util.Log.d("DashboardViewModel", "startFetching called")
+        android.util.Log.d("DashboardViewModel", "API Key: ${_state.value.apiKey}")
+        android.util.Log.d("DashboardViewModel", "Chosen SIM ID: ${_state.value.chosenSimId}")
+        android.util.Log.d("DashboardViewModel", "Agent Active: ${_state.value.agentActive}")
+        
         if (_state.value.apiKey.isEmpty() || _state.value.chosenSimId == null) {
+            android.util.Log.e("DashboardViewModel", "Cannot start fetching - API key empty or SIM not selected")
             return
         }
         
         fetchJob = viewModelScope.launch {
+            android.util.Log.d("DashboardViewModel", "Fetch job started")
             while (_state.value.agentActive) {
                 fetchAndProcessMessages()
                 delay(30000)
@@ -183,19 +191,33 @@ class DashboardViewModel(context: Context) : ViewModel() {
     }
     
     private suspend fun fetchAndProcessMessages() {
+        android.util.Log.d("DashboardViewModel", "fetchAndProcessMessages called")
+        android.util.Log.d("DashboardViewModel", "Agent Active: ${_state.value.agentActive}")
+        android.util.Log.d("DashboardViewModel", "API Key: '${_state.value.apiKey}'")
+        android.util.Log.d("DashboardViewModel", "Chosen SIM ID: ${_state.value.chosenSimId}")
+        
         if (!_state.value.agentActive || _state.value.apiKey.isEmpty() || _state.value.chosenSimId == null) {
+            android.util.Log.e("DashboardViewModel", "Cannot fetch - conditions not met")
+            android.util.Log.e("DashboardViewModel", "Agent Active: ${_state.value.agentActive}, API Key empty: ${_state.value.apiKey.isEmpty()}, SIM null: ${_state.value.chosenSimId == null}")
             return
         }
         
         _state.value = _state.value.copy(isFetching = true)
+        android.util.Log.d("DashboardViewModel", "Fetching messages from API...")
         
         val result = apiService.fetchMessages(_state.value.apiKey)
         
         _state.value = _state.value.copy(isFetching = false)
         
         result.onSuccess { messages ->
+            android.util.Log.d("DashboardViewModel", "API fetch successful, got ${messages.size} messages")
             if (messages.isEmpty()) {
+                android.util.Log.d("DashboardViewModel", "No messages to process")
                 return
+            }
+            
+            messages.forEach { msg ->
+                android.util.Log.d("DashboardViewModel", "Message: id=${msg.id}, receiver=${msg.receiver}, status=${msg.status}")
             }
             
             viewModelScope.launch {
@@ -204,6 +226,9 @@ class DashboardViewModel(context: Context) : ViewModel() {
             }
             
             processMessages(messages)
+        }
+        result.onFailure { error ->
+            android.util.Log.e("DashboardViewModel", "API fetch failed: $error")
         }
     }
     

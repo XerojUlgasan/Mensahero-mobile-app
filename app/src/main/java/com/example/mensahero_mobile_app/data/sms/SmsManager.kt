@@ -122,8 +122,16 @@ class SmsManagerWrapper(private val context: Context) {
                     }
                 }
                 
-                context.registerReceiver(sentReceiver, IntentFilter(SMS_SENT_ACTION))
-                context.registerReceiver(deliveredReceiver, IntentFilter(SMS_DELIVERED_ACTION))
+                context.registerReceiver(
+                    sentReceiver,
+                    IntentFilter(SMS_SENT_ACTION),
+                    Context.RECEIVER_NOT_EXPORTED
+                )
+                context.registerReceiver(
+                    deliveredReceiver,
+                    IntentFilter(SMS_DELIVERED_ACTION),
+                    Context.RECEIVER_NOT_EXPORTED
+                )
                 
                 // Format phone number with country code if needed
                 val formattedNumber = formatPhoneNumber(message.receiver)
