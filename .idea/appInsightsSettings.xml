@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.example.mensahero_mobile_app" />
+                  <option name="mobileSdkAppId" value="1:351998805859:android:bbacce77f9c08299a83556" />
+                  <option name="projectId" value="openmensahero" />
+                  <option name="projectNumber" value="351998805859" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

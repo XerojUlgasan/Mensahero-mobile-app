@@ -24,6 +24,9 @@ class PreferencesManager(private val context: Context) {
         private val TOTAL_DELIVERED = intPreferencesKey("total_delivered")
         private val TOTAL_FAILED = intPreferencesKey("total_failed")
         private val LAST_ACTIVITY_TIMESTAMP = longPreferencesKey("last_activity_timestamp")
+        private val DEVICE_ID = stringPreferencesKey("device_id")
+        private val FCM_TOKEN = stringPreferencesKey("fcm_token")
+        private val DEVICE_NAME = stringPreferencesKey("device_name")
     }
 
     val apiKey: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -99,6 +102,44 @@ class PreferencesManager(private val context: Context) {
     suspend fun updateLastActivity() {
         context.dataStore.edit { preferences ->
             preferences[LAST_ACTIVITY_TIMESTAMP] = System.currentTimeMillis()
+        }
+    }
+
+    val deviceId: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[DEVICE_ID]
+    }
+
+    suspend fun saveDeviceId(deviceId: String) {
+        context.dataStore.edit { preferences ->
+            preferences[DEVICE_ID] = deviceId
+        }
+    }
+
+    val fcmToken: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[FCM_TOKEN]
+    }
+
+    suspend fun saveFcmToken(token: String) {
+        context.dataStore.edit { preferences ->
+            preferences[FCM_TOKEN] = token
+        }
+    }
+
+    val deviceName: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[DEVICE_NAME]
+    }
+
+    suspend fun saveDeviceName(name: String) {
+        context.dataStore.edit { preferences ->
+            preferences[DEVICE_NAME] = name
+        }
+    }
+
+    suspend fun clearDeviceRegistration() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(DEVICE_ID)
+            preferences.remove(FCM_TOKEN)
+            preferences.remove(DEVICE_NAME)
         }
     }
 }

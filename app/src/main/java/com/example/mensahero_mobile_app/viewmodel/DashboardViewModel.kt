@@ -8,15 +8,20 @@ import androidx.lifecycle.viewModelScope
 import com.example.mensahero_mobile_app.BuildConfig
 import com.example.mensahero_mobile_app.data.api.MensaheroApiService
 import com.example.mensahero_mobile_app.data.datastore.PreferencesManager
+import com.example.mensahero_mobile_app.data.model.DeviceRegistrationRequest
+import com.example.mensahero_mobile_app.data.model.DeviceRegistrationResponse
+import com.example.mensahero_mobile_app.data.model.DeviceUpdateRequest
 import com.example.mensahero_mobile_app.data.model.Message
 import com.example.mensahero_mobile_app.data.model.MessageStatus
 import com.example.mensahero_mobile_app.data.model.MessageUpdateRequest
 import com.example.mensahero_mobile_app.data.model.SimInfo
+import com.example.mensahero_mobile_app.data.fcm.FcmTokenManager
 import com.example.mensahero_mobile_app.data.sms.SmsManagerWrapper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -36,7 +41,14 @@ data class DashboardState(
     val totalFailed: Int = 0,
     val lastActivityTimestamp: Long? = null,
     val uptimeSeconds: Long = 0,
-    val processingMessageCount: Int = 0
+    val processingMessageCount: Int = 0,
+    val isDeviceRegistered: Boolean = false,
+    val deviceName: String = "",
+    val showDeviceRegistration: Boolean = false,
+    val isRegisteringDevice: Boolean = false,
+    val deviceRegistrationError: String? = null,
+    val inputDeviceName: String = "",
+    val inputApiKey: String = ""
 )
 
 class DashboardViewModel(context: Context) : ViewModel() {
@@ -52,9 +64,10 @@ class DashboardViewModel(context: Context) : ViewModel() {
     private var fetchJob: kotlinx.coroutines.Job? = null
     private var uptimeJob: kotlinx.coroutines.Job? = null
     private var activeSince: Long = 0
+    private var lastKnownApiKey: String = ""
+    private var isInitialized: Boolean = false
     
     init {
-        android.util.Log.d("DashboardViewModel", "DashboardViewModel init")
         loadPreferences()
         loadAvailableSims()
         startUptimeTracking()
@@ -62,8 +75,24 @@ class DashboardViewModel(context: Context) : ViewModel() {
     
     private fun loadPreferences() {
         viewModelScope.launch {
+            preferencesManager.deviceId.collect { deviceId ->
+                val isRegistered = deviceId != null && deviceId.isNotEmpty()
+                _state.value = _state.value.copy(isDeviceRegistered = isRegistered)
+                
+                if (isInitialized && !isRegistered && _state.value.apiKey.isNotEmpty() && !_state.value.showDeviceRegistration) {
+                    promptDeviceRegistration()
+                }
+            }
+        }
+        viewModelScope.launch {
             preferencesManager.apiKey.collect { key ->
-                _state.value = _state.value.copy(apiKey = key ?: "")
+                val currentKey = key ?: ""
+                _state.value = _state.value.copy(apiKey = currentKey)
+                
+                if (isInitialized && lastKnownApiKey.isNotEmpty() && currentKey != lastKnownApiKey && _state.value.isDeviceRegistered) {
+                    autoUpdateDevice(currentKey)
+                }
+                lastKnownApiKey = currentKey
             }
         }
         viewModelScope.launch {
@@ -104,6 +133,17 @@ class DashboardViewModel(context: Context) : ViewModel() {
                 _state.value = _state.value.copy(lastActivityTimestamp = timestamp)
             }
         }
+        viewModelScope.launch {
+            preferencesManager.deviceName.collect { deviceName ->
+                _state.value = _state.value.copy(deviceName = deviceName ?: "")
+            }
+        }
+        
+        // Mark as initialized after a short delay to allow all preferences to load
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(500)
+            isInitialized = true
+        }
     }
     
     private fun loadAvailableSims() {
@@ -136,7 +176,37 @@ class DashboardViewModel(context: Context) : ViewModel() {
     fun toggleAgentActive(active: Boolean) {
         viewModelScope.launch {
             preferencesManager.setAgentActive(active)
+            
+            if (_state.value.isDeviceRegistered) {
+                updateDeviceStatus(active)
+            }
         }
+    }
+
+    private suspend fun updateDeviceStatus(isActive: Boolean) {
+        val deviceId = preferencesManager.deviceId.first()
+        val apiKey = _state.value.apiKey.trim()
+        val deviceName = _state.value.deviceName.trim()
+
+        if (deviceId == null || apiKey.isEmpty() || deviceName.isEmpty()) {
+            return
+        }
+
+        val tokenResult = FcmTokenManager.getToken()
+        if (tokenResult.isFailure) {
+            return
+        }
+
+        val fcmToken = tokenResult.getOrNull() ?: ""
+        val request = DeviceUpdateRequest(
+            device_id = deviceId,
+            api_key = apiKey,
+            fcm_token = fcmToken,
+            isActive = isActive,
+            device_name = deviceName
+        )
+
+        apiService.updateDevice(request)
     }
     
     private fun startUptimeTracking() {
@@ -157,9 +227,10 @@ class DashboardViewModel(context: Context) : ViewModel() {
         android.util.Log.d("DashboardViewModel", "API Key: ${_state.value.apiKey}")
         android.util.Log.d("DashboardViewModel", "Chosen SIM ID: ${_state.value.chosenSimId}")
         android.util.Log.d("DashboardViewModel", "Agent Active: ${_state.value.agentActive}")
+        android.util.Log.d("DashboardViewModel", "Device Registered: ${_state.value.isDeviceRegistered}")
         
-        if (_state.value.apiKey.isEmpty() || _state.value.chosenSimId == null) {
-            android.util.Log.e("DashboardViewModel", "Cannot start fetching - API key empty or SIM not selected")
+        if (_state.value.apiKey.isEmpty() || _state.value.chosenSimId == null || !_state.value.isDeviceRegistered) {
+            android.util.Log.e("DashboardViewModel", "Cannot start fetching - API key empty, SIM not selected, or device not registered")
             return
         }
         
@@ -178,7 +249,7 @@ class DashboardViewModel(context: Context) : ViewModel() {
     }
     
     fun manualRefresh() {
-        if (!_state.value.canRefresh || _state.value.isFetching || _state.value.isProcessing) {
+        if (!_state.value.canRefresh || _state.value.isFetching || _state.value.isProcessing || !_state.value.isDeviceRegistered) {
             return
         }
         
@@ -195,10 +266,11 @@ class DashboardViewModel(context: Context) : ViewModel() {
         android.util.Log.d("DashboardViewModel", "Agent Active: ${_state.value.agentActive}")
         android.util.Log.d("DashboardViewModel", "API Key: '${_state.value.apiKey}'")
         android.util.Log.d("DashboardViewModel", "Chosen SIM ID: ${_state.value.chosenSimId}")
+        android.util.Log.d("DashboardViewModel", "Device Registered: ${_state.value.isDeviceRegistered}")
         
-        if (!_state.value.agentActive || _state.value.apiKey.isEmpty() || _state.value.chosenSimId == null) {
+        if (!_state.value.agentActive || _state.value.apiKey.isEmpty() || _state.value.chosenSimId == null || !_state.value.isDeviceRegistered) {
             android.util.Log.e("DashboardViewModel", "Cannot fetch - conditions not met")
-            android.util.Log.e("DashboardViewModel", "Agent Active: ${_state.value.agentActive}, API Key empty: ${_state.value.apiKey.isEmpty()}, SIM null: ${_state.value.chosenSimId == null}")
+            android.util.Log.e("DashboardViewModel", "Agent Active: ${_state.value.agentActive}, API Key empty: ${_state.value.apiKey.isEmpty()}, SIM null: ${_state.value.chosenSimId == null}, Device Registered: ${_state.value.isDeviceRegistered}")
             return
         }
         
@@ -325,6 +397,178 @@ class DashboardViewModel(context: Context) : ViewModel() {
     
     fun getApiUrl(): String {
         return BuildConfig.API_URL
+    }
+
+    fun showDeviceRegistration() {
+        _state.value = _state.value.copy(
+            showDeviceRegistration = true,
+            inputDeviceName = if (_state.value.isDeviceRegistered) _state.value.deviceName else ""
+        )
+    }
+
+    fun hideDeviceRegistration() {
+        _state.value = _state.value.copy(
+            showDeviceRegistration = false,
+            deviceRegistrationError = null,
+            inputDeviceName = "",
+            inputApiKey = ""
+        )
+    }
+
+    fun onInputDeviceNameChange(name: String) {
+        _state.value = _state.value.copy(inputDeviceName = name)
+    }
+
+    fun onInputApiKeyChange(key: String) {
+        _state.value = _state.value.copy(inputApiKey = key)
+    }
+
+    fun registerDevice() {
+        val apiKey = _state.value.inputApiKey.trim().takeIf { it.isNotEmpty() } ?: _state.value.apiKey.trim()
+        val deviceName = _state.value.inputDeviceName.trim()
+        val isUpdate = _state.value.isDeviceRegistered
+
+        if (!isUpdate && apiKey.isEmpty()) {
+            _state.value = _state.value.copy(deviceRegistrationError = "API key is required")
+            return
+        }
+        if (deviceName.isEmpty()) {
+            _state.value = _state.value.copy(deviceRegistrationError = "Device name is required")
+            return
+        }
+
+        _state.value = _state.value.copy(isRegisteringDevice = true, deviceRegistrationError = null)
+
+        viewModelScope.launch {
+            if (isUpdate) {
+                updateDeviceName(deviceName)
+            } else {
+                registerNewDevice(apiKey, deviceName)
+            }
+        }
+    }
+
+    private suspend fun registerNewDevice(apiKey: String, deviceName: String) {
+        val tokenResult = FcmTokenManager.getToken()
+        if (tokenResult.isFailure) {
+            _state.value = _state.value.copy(
+                isRegisteringDevice = false,
+                deviceRegistrationError = "Failed to get FCM token"
+            )
+            return
+        }
+
+        val fcmToken = tokenResult.getOrNull() ?: ""
+        val request = DeviceRegistrationRequest(
+            fcm_token = fcmToken,
+            api_key = apiKey,
+            isActive = true,
+            device_name = deviceName
+        )
+
+        val result = apiService.registerDevice(request)
+
+        if (result.isSuccess) {
+            val deviceId = result.getOrNull()?.id ?: ""
+            preferencesManager.saveDeviceId(deviceId)
+            preferencesManager.saveFcmToken(fcmToken)
+            preferencesManager.saveDeviceName(deviceName)
+            preferencesManager.saveApiKey(apiKey)
+
+            _state.value = _state.value.copy(
+                isRegisteringDevice = false,
+                showDeviceRegistration = false,
+                inputDeviceName = "",
+                inputApiKey = "",
+                deviceRegistrationError = null,
+                deviceName = deviceName,
+                isDeviceRegistered = true
+            )
+        } else {
+            _state.value = _state.value.copy(
+                isRegisteringDevice = false,
+                deviceRegistrationError = result.exceptionOrNull()?.message ?: "Registration failed"
+            )
+        }
+    }
+
+    private suspend fun updateDeviceName(deviceName: String) {
+        val deviceId = preferencesManager.deviceId.first()
+        if (deviceId == null) {
+            _state.value = _state.value.copy(
+                isRegisteringDevice = false,
+                deviceRegistrationError = "Device not found"
+            )
+            return
+        }
+
+        val tokenResult = FcmTokenManager.getToken()
+        if (tokenResult.isFailure) {
+            _state.value = _state.value.copy(
+                isRegisteringDevice = false,
+                deviceRegistrationError = "Failed to get FCM token"
+            )
+            return
+        }
+
+        val fcmToken = tokenResult.getOrNull() ?: ""
+        val request = DeviceUpdateRequest(
+            device_id = deviceId,
+            api_key = _state.value.apiKey,
+            fcm_token = fcmToken,
+            isActive = true,
+            device_name = deviceName
+        )
+
+        val result = apiService.updateDevice(request)
+
+        if (result.isSuccess) {
+            preferencesManager.saveDeviceName(deviceName)
+            preferencesManager.saveFcmToken(fcmToken)
+            _state.value = _state.value.copy(
+                isRegisteringDevice = false,
+                showDeviceRegistration = false,
+                inputDeviceName = "",
+                inputApiKey = "",
+                deviceRegistrationError = null,
+                deviceName = deviceName
+            )
+        } else {
+            _state.value = _state.value.copy(
+                isRegisteringDevice = false,
+                deviceRegistrationError = result.exceptionOrNull()?.message ?: "Update failed"
+            )
+        }
+    }
+
+    private fun promptDeviceRegistration() {
+        _state.value = _state.value.copy(
+            showDeviceRegistration = true,
+            inputDeviceName = "",
+            inputApiKey = ""
+        )
+    }
+
+    private suspend fun autoUpdateDevice(newApiKey: String) {
+        val deviceId = preferencesManager.deviceId.first()
+        if (deviceId == null) return
+
+        val tokenResult = FcmTokenManager.getToken()
+        if (tokenResult.isFailure) return
+
+        val fcmToken = tokenResult.getOrNull() ?: ""
+        val request = DeviceUpdateRequest(
+            device_id = deviceId,
+            api_key = newApiKey,
+            fcm_token = fcmToken,
+            isActive = true,
+            device_name = _state.value.deviceName
+        )
+
+        val result = apiService.updateDevice(request)
+        if (result.isSuccess) {
+            preferencesManager.saveFcmToken(fcmToken)
+        }
     }
     
     override fun onCleared() {

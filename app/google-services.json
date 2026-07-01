@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "351998805859",
+    "project_id": "openmensahero",
+    "storage_bucket": "openmensahero.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:351998805859:android:bbacce77f9c08299a83556",
+        "android_client_info": {
+          "package_name": "com.example.mensahero_mobile_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmr0QzN_btbNMjX4ivaFS8_tj51P-HDvs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -25,6 +25,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.content.ContextCompat
 import com.example.mensahero_mobile_app.data.model.SimInfo
 import com.example.mensahero_mobile_app.viewmodel.DashboardViewModel
@@ -144,6 +146,131 @@ fun SimSelectionDialog(
 }
 
 @Composable
+fun DeviceRegistrationDialog(
+    show: Boolean,
+    deviceName: String,
+    apiKey: String = "",
+    isRegistering: Boolean,
+    error: String?,
+    isUpdate: Boolean = false,
+    onDeviceNameChange: (String) -> Unit,
+    onApiKeyChange: (String) -> Unit = {},
+    onRegister: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (show) {
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = SurfaceDark,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        text = if (isUpdate) "Edit Device Name" else "Register Device",
+                        color = White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (isUpdate) "Update your device name" else "Enter your device details to register",
+                        color = TextMuted,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    if (!isUpdate) {
+                        OutlinedTextField(
+                            value = apiKey,
+                            onValueChange = onApiKeyChange,
+                            label = { Text("API Key", color = TextMuted) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color(0xFF2A2A2A),
+                                unfocusedContainerColor = Color(0xFF2A2A2A),
+                                focusedBorderColor = Color(0xFF3A3A3A),
+                                unfocusedBorderColor = BorderColor,
+                                focusedTextColor = White,
+                                unfocusedTextColor = White,
+                                cursorColor = White
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    OutlinedTextField(
+                        value = deviceName,
+                        onValueChange = onDeviceNameChange,
+                        label = { Text("Device Name", color = TextMuted) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFF2A2A2A),
+                            unfocusedContainerColor = Color(0xFF2A2A2A),
+                            focusedBorderColor = Color(0xFF3A3A3A),
+                            unfocusedBorderColor = BorderColor,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White,
+                            cursorColor = White
+                        )
+                    )
+
+                    if (error != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = error!!,
+                            color = Color(0xFFDC2626),
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = TextMuted
+                            )
+                        ) {
+                            Text("Cancel", fontSize = 14.sp)
+                        }
+                        Button(
+                            onClick = onRegister,
+                            enabled = !isRegistering,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = White,
+                                contentColor = BgBlack
+                            )
+                        ) {
+                            if (isRegistering) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = BgBlack,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text(if (isUpdate) "Update" else "Register", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun StatCard(stat: StatItem, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
@@ -185,7 +312,7 @@ fun StatCard(stat: StatItem, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun AgentStatusCard(agent: AgentInfo) {
+fun AgentStatusCard(agent: AgentInfo, onEditDeviceName: () -> Unit = {}) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -209,13 +336,37 @@ fun AgentStatusCard(agent: AgentInfo) {
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Device name
-            Text(
-                text = agent.name,
-                color = White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            // Device name with edit button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = agent.name,
+                    color = White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = onEditDeviceName,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = White,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = "Edit device name",
+                            tint = BgBlack,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(4.dp))
 
@@ -323,7 +474,7 @@ fun DashboardScreen(
     )
 
     val agent = AgentInfo(
-        name = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
+        name = if (state.deviceName.isNotEmpty()) state.deviceName else "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
         isOnline = state.agentActive,
         uptime = viewModel.getUptimeText(),
         gateway = viewModel.getApiUrl()
@@ -427,6 +578,42 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
+                // Device registration prompt
+                if (!state.isDeviceRegistered) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF3A2A1A),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Device Not Registered",
+                                color = Color(0xFFFFB84D),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Register your device to enable message fetching",
+                                color = TextMuted,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = { viewModel.showDeviceRegistration() },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFFB84D),
+                                    contentColor = Color(0xFF1A1A1A)
+                                )
+                            ) {
+                                Text("Register Device", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
                 // Page title
                 Text(
                     text = "Dashboard",
@@ -468,7 +655,12 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                AgentStatusCard(agent)
+                AgentStatusCard(
+                    agent = agent,
+                    onEditDeviceName = {
+                        viewModel.showDeviceRegistration()
+                    }
+                )
 
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -482,5 +674,18 @@ fun DashboardScreen(
             onDismiss = { }
         )
     }
+
+    DeviceRegistrationDialog(
+        show = state.showDeviceRegistration,
+        deviceName = state.inputDeviceName,
+        apiKey = state.inputApiKey,
+        isRegistering = state.isRegisteringDevice,
+        error = state.deviceRegistrationError,
+        isUpdate = state.isDeviceRegistered,
+        onDeviceNameChange = { viewModel.onInputDeviceNameChange(it) },
+        onApiKeyChange = { viewModel.onInputApiKeyChange(it) },
+        onRegister = { viewModel.registerDevice() },
+        onDismiss = { viewModel.hideDeviceRegistration() }
+    )
 }
 

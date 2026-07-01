@@ -1,12 +1,17 @@
 package com.example.mensahero_mobile_app.data.api
 
 import com.example.mensahero_mobile_app.BuildConfig
+import com.example.mensahero_mobile_app.data.model.DeviceCheckResponse
+import com.example.mensahero_mobile_app.data.model.DeviceRegistrationRequest
+import com.example.mensahero_mobile_app.data.model.DeviceRegistrationResponse
+import com.example.mensahero_mobile_app.data.model.DeviceUpdateRequest
 import com.example.mensahero_mobile_app.data.model.Message
 import com.example.mensahero_mobile_app.data.model.MessageUpdateRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -49,6 +54,55 @@ class MensaheroApiService {
                 setBody(updates)
             }
             Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun pingServer(): Result<Unit> {
+        return try {
+            client.get("${BuildConfig.API_URL}/api/ping")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun registerDevice(request: DeviceRegistrationRequest): Result<DeviceRegistrationResponse> {
+        return try {
+            val response: HttpResponse = client.post("${BuildConfig.API_URL}/api/devices/register") {
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+            val result: DeviceRegistrationResponse = response.body()
+            Result.success(result)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateDevice(request: DeviceUpdateRequest): Result<Unit> {
+        return try {
+            client.patch("${BuildConfig.API_URL}/api/devices/update") {
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun checkDevice(apiKey: String, deviceId: String): Result<DeviceCheckResponse> {
+        return try {
+            val response: HttpResponse = client.get("${BuildConfig.API_URL}/api/devices/check") {
+                url {
+                    parameters.append("apiKey", apiKey)
+                    parameters.append("deviceId", deviceId)
+                }
+            }
+            val result: DeviceCheckResponse = response.body()
+            Result.success(result)
         } catch (e: Exception) {
             Result.failure(e)
         }

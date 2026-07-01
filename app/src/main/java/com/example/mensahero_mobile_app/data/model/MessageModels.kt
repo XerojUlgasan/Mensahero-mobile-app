@@ -24,3 +24,38 @@ enum class MessageStatus(val value: String) {
     DELIVERED("DELIVERED"),
     FAILED("FAILED")
 }
+
+@Serializable
+data class DeviceRegistrationRequest(
+    val fcm_token: String,
+    val api_key: String,
+    val isActive: Boolean,
+    val device_name: String
+)
+
+@Serializable
+data class DeviceRegistrationResponse(
+    val id: String
+)
+
+@Serializable
+data class DeviceUpdateRequest(
+    val device_id: String,
+    val api_key: String,
+    val fcm_token: String,
+    val isActive: Boolean,
+    val device_name: String
+)
+
+@Serializable
+data class DeviceCheckResponse(
+    val apiId: String,
+    val created_at: String,
+    val deviceName: String,
+    val fcm_token: String,
+    val id: String,
+    val isActive: Boolean,
+    val last_used: String,
+    val ownerId: String,
+    val updated_at: String
+)

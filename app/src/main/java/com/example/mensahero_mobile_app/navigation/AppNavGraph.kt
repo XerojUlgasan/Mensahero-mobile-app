@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import com.example.mensahero_mobile_app.ui.dashboard.DashboardScreenWrapper
 import com.example.mensahero_mobile_app.ui.keys.KeyScreenWrapper
 import com.example.mensahero_mobile_app.ui.login.LoginScreen
+import com.example.mensahero_mobile_app.ui.servercheck.ServerConnectionCheckScreen
 import com.example.mensahero_mobile_app.ui.settings.SettingsScreenWrapper
 import com.example.mensahero_mobile_app.ui.splash.SplashScreen
 import com.example.mensahero_mobile_app.viewmodel.*
@@ -37,7 +38,7 @@ fun AppNavGraph(
             LaunchedEffect(state) {
                 when (state) {
                     is SplashState.HasSession -> {
-                        navController.navigate(Routes.Dashboard.route) {
+                        navController.navigate(Routes.ServerConnection.route) {
                             popUpTo(Routes.Splash.route) { inclusive = true }
                         }
                     }
@@ -64,10 +65,29 @@ fun AppNavGraph(
             LoginScreen(
                 viewModel = viewModel,
                 onLoginSuccess = {
-                    navController.navigate(Routes.Dashboard.route) {
+                    navController.navigate(Routes.ServerConnection.route) {
                         popUpTo(Routes.Login.route) { inclusive = true }
                     }
                 }
+            )
+        }
+
+        composable(Routes.ServerConnection.route) {
+            val viewModel = remember { ServerConnectionViewModel(context) }
+            val state by viewModel.state.collectAsState()
+
+            LaunchedEffect(state.isConnected) {
+                if (state.isConnected) {
+                    navController.navigate(Routes.Dashboard.route) {
+                        popUpTo(Routes.ServerConnection.route) { inclusive = true }
+                    }
+                }
+            }
+
+            ServerConnectionCheckScreen(
+                isLoading = state.isLoading,
+                error = state.error,
+                onRetry = { viewModel.checkConnection() }
             )
         }
 
