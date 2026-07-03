@@ -1,5 +1,6 @@
 package com.example.mensahero_mobile_app.data.api
 
+import android.util.Log
 import com.example.mensahero_mobile_app.BuildConfig
 import com.example.mensahero_mobile_app.data.model.DeviceCheckResponse
 import com.example.mensahero_mobile_app.data.model.DeviceRegistrationRequest
@@ -30,11 +31,12 @@ class MensaheroApiService {
         }
     }
 
-    suspend fun fetchMessages(apiKey: String): Result<List<Message>> {
+    suspend fun fetchMessages(apiKey: String, deviceId: String): Result<List<Message>> {
         return try {
             val response: HttpResponse = client.get("${BuildConfig.API_URL}/api/messages/fetch") {
                 url {
                     parameters.append("apiKey", apiKey)
+                    parameters.append("deviceId", deviceId)
                 }
             }
             val messages: List<Message> = response.body()
@@ -83,12 +85,15 @@ class MensaheroApiService {
 
     suspend fun updateDevice(request: DeviceUpdateRequest): Result<Unit> {
         return try {
-            client.patch("${BuildConfig.API_URL}/api/devices/update") {
+            Log.d("FCMToken", "Sending update request: device_id=${request.device_id}, fcm_token=${request.fcm_token}")
+            val response = client.patch("${BuildConfig.API_URL}/api/devices/update") {
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
+            Log.d("FCMToken", "Update response status: ${response.status}")
             Result.success(Unit)
         } catch (e: Exception) {
+            Log.e("FCMToken", "Update device failed: ${e.message}", e)
             Result.failure(e)
         }
     }
