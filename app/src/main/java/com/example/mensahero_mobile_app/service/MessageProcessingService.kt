@@ -35,6 +35,7 @@ class MessageProcessingService : Service() {
     private val api = MensaheroApiService()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var processingJob: Job? = null
+    private lateinit var prefs: PreferencesManager
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -46,7 +47,7 @@ class MessageProcessingService : Service() {
             return START_NOT_STICKY
         }
 
-        val prefs = PreferencesManager(applicationContext)
+        prefs = PreferencesManager(applicationContext)
         val smsManager = SmsManagerWrapper(applicationContext)
 
         processingJob = scope.launch {
@@ -85,6 +86,14 @@ class MessageProcessingService : Service() {
             val updates = messages.map { message ->
                 val sent = sendSms(message, simId, smsManager)
                 Log.d(tag, "SMS id=${message.id}: ${if (sent) "SENT" else "FAILED"}")
+                if (sent) {
+                    prefs.incrementMessagesFetched()
+                    prefs.incrementDelivered()
+                } else {
+                    prefs.incrementMessagesFetched()
+                    prefs.incrementFailed()
+                }
+                prefs.updateLastActivity()
                 MessageUpdateRequest(
                     messageId = message.id,
                     status = if (sent) MessageStatus.DELIVERED.value else MessageStatus.FAILED.value

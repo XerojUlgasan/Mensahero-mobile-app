@@ -40,6 +40,7 @@ data class DashboardState(
     val lastActivityTimestamp: Long? = null,
     val uptimeSeconds: Long = 0,
     val processingMessageCount: Int = 0,
+    val isCheckingRegistration: Boolean = true,
     val isDeviceRegistered: Boolean = false,
     val deviceName: String = "",
     val showDeviceRegistration: Boolean = false,
@@ -75,7 +76,10 @@ class DashboardViewModel(context: Context) : ViewModel() {
         viewModelScope.launch {
             preferencesManager.deviceId.collect { deviceId ->
                 val isRegistered = !deviceId.isNullOrEmpty()
-                _state.value = _state.value.copy(isDeviceRegistered = isRegistered)
+                _state.value = _state.value.copy(
+                    isCheckingRegistration = false,
+                    isDeviceRegistered = isRegistered
+                )
                 if (isInitialized && !isRegistered && _state.value.apiKey.isNotEmpty() && !_state.value.showDeviceRegistration) {
                     promptDeviceRegistration()
                 }
@@ -312,7 +316,8 @@ class DashboardViewModel(context: Context) : ViewModel() {
     fun showDeviceRegistration() {
         _state.value = _state.value.copy(
             showDeviceRegistration = true,
-            inputDeviceName = if (_state.value.isDeviceRegistered) _state.value.deviceName else ""
+            inputDeviceName = if (_state.value.isDeviceRegistered) _state.value.deviceName else "",
+            inputApiKey = if (!_state.value.isDeviceRegistered) _state.value.apiKey else ""
         )
     }
 

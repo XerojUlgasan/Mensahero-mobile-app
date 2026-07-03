@@ -579,7 +579,7 @@ fun DashboardScreen(
                 }
 
                 // Device registration prompt
-                if (!state.isDeviceRegistered) {
+                if (!state.isCheckingRegistration && !state.isDeviceRegistered) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = Color(0xFF3A2A1A),
