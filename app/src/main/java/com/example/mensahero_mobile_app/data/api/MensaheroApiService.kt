@@ -8,6 +8,7 @@ import com.example.mensahero_mobile_app.data.model.DeviceRegistrationResponse
 import com.example.mensahero_mobile_app.data.model.DeviceUpdateRequest
 import com.example.mensahero_mobile_app.data.model.Message
 import com.example.mensahero_mobile_app.data.model.MessageUpdateRequest
+import com.example.mensahero_mobile_app.data.model.SubmitHistoryResultRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -94,6 +95,28 @@ class MensaheroApiService {
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FCMToken", "Update device failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Submits the SMS thread-history result for a job.
+     *
+     * Note: the client is not configured with expectSuccess, so a non-2xx response
+     * (e.g. 403/404/409 meaning the job was already resolved or isn't ours) does NOT
+     * throw — it resolves as [Result.success]. Only genuine network/IO failures throw
+     * and surface as [Result.failure], which the caller may treat as transient.
+     */
+    suspend fun submitHistoryResult(request: SubmitHistoryResultRequest): Result<Unit> {
+        return try {
+            val response = client.post("${BuildConfig.API_URL}/api/messages/history/result") {
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+            Log.d("SmsHistory", "history/result status=${response.status} jobId=${request.jobId} failed=${request.failed}")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("SmsHistory", "history/result POST failed jobId=${request.jobId}: ${e.message}", e)
             Result.failure(e)
         }
     }

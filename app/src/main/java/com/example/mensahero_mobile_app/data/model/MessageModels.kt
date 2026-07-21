@@ -59,3 +59,20 @@ data class DeviceCheckResponse(
     val ownerId: String,
     val updated_at: String
 )
+
+@Serializable
+data class HistoryMessageDto(
+    val body: String,
+    val direction: String,   // "SENT" or "RECEIVED"
+    val timestamp: Long      // epoch millis
+)
+
+@Serializable
+data class SubmitHistoryResultRequest(
+    val apiKey: String,
+    val deviceId: String,
+    val jobId: String,
+    val failed: Boolean,
+    val failureReason: String? = null,
+    val messages: List<HistoryMessageDto>? = null
+)
