@@ -67,12 +67,32 @@ data class HistoryMessageDto(
     val timestamp: Long      // epoch millis
 )
 
+/**
+ * Wire body for POST /api/messages/history/result.
+ *
+ * The API key is sent in the `Authorization: Bearer mh_live_...` header (see
+ * [com.example.mensahero_mobile_app.data.api.MensaheroApiService.submitHistoryResult]),
+ * NOT in this body.
+ */
 @Serializable
 data class SubmitHistoryResultRequest(
-    val apiKey: String,
     val deviceId: String,
-    val jobId: String,
+    val requestId: String,
+    val address: String,
+    val pageSize: Int,
+    val pageNumber: Int,
     val failed: Boolean,
-    val failureReason: String? = null,
-    val messages: List<HistoryMessageDto>? = null
+    val reason: String? = null,
+    val messages: List<HistoryMessageDto> = emptyList()
 )
+
+/**
+ * Fixed set of failure reasons accepted by the backend. Any unrecognized value is
+ * normalized server-side to [GATEWAY_FAILURE], but we always send one of these.
+ */
+object HistoryFailureReason {
+    const val PERMISSION_DENIED = "PERMISSION_DENIED"
+    const val DEVICE_NOT_FOUND = "DEVICE_NOT_FOUND"
+    const val DEVICE_BUSY = "DEVICE_BUSY"
+    const val GATEWAY_FAILURE = "GATEWAY_FAILURE"
+}

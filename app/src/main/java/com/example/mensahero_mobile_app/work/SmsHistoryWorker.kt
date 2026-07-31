@@ -9,6 +9,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.mensahero_mobile_app.data.api.MensaheroApiService
 import com.example.mensahero_mobile_app.data.datastore.PreferencesManager
+import com.example.mensahero_mobile_app.data.model.HistoryFailureReason
 import com.example.mensahero_mobile_app.data.model.HistoryMessageDto
 import com.example.mensahero_mobile_app.data.model.SubmitHistoryResultRequest
 import com.example.mensahero_mobile_app.data.sms.SmsHistoryReader
@@ -17,16 +18,18 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
- * Handles an on-demand "SMS thread history" request: reads the last few local SMS
- * for an address and POSTs the result back to the backend.
+ * Handles an on-demand "SMS thread history" request (FCM `type == "SMS_HISTORY"`):
+ * reads exactly the requested page of local SMS for an address and POSTs the result
+ * back to the backend, which relays it to the browser over SSE.
  *
  * Design notes:
  *  - Any inability to read (missing credentials, no permission, read error) is
- *    reported to the server as `failed = true` so the dashboard resolves to FAILED
- *    instead of hanging until the server-side 30s TIMEOUT.
- *  - A non-2xx POST (job already resolved / not ours) is NOT retried.
+ *    reported to the server as `failed = true` with a fixed [HistoryFailureReason]
+ *    so the browser resolves instead of hanging until the server-side timeout.
+ *  - An empty result is a valid success, not a failure.
+ *  - A non-2xx POST (410/403/401/400) is terminal and never retried.
  *  - Only a genuine transient network failure of the POST triggers a single retry;
- *    a long backoff is pointless given the 30s server timeout.
+ *    a long backoff is pointless given the ~45s server TTL.
  */
 class SmsHistoryWorker(
     context: Context,
@@ -36,20 +39,25 @@ class SmsHistoryWorker(
     companion object {
         private const val TAG = "SmsHistoryWorker"
 
-        const val KEY_JOB_ID = "jobId"
+        const val KEY_REQUEST_ID = "requestId"
         const val KEY_ADDRESS = "address"
+        const val KEY_PAGE_SIZE = "pageSize"
+        const val KEY_PAGE_NUMBER = "pageNumber"
 
+        private const val MAX_PAGE_SIZE = 25
         private const val MAX_ATTEMPTS = 2
     }
 
     private val apiService = MensaheroApiService()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val jobId = inputData.getString(KEY_JOB_ID)
+        val requestId = inputData.getString(KEY_REQUEST_ID)
         val address = inputData.getString(KEY_ADDRESS)
+        val pageSize = inputData.getInt(KEY_PAGE_SIZE, MAX_PAGE_SIZE).coerceIn(1, MAX_PAGE_SIZE)
+        val pageNumber = inputData.getInt(KEY_PAGE_NUMBER, 0).coerceAtLeast(0)
 
-        if (jobId.isNullOrBlank() || address.isNullOrBlank()) {
-            Log.e(TAG, "Missing jobId or address in input data — nothing to resolve")
+        if (requestId.isNullOrBlank() || address.isNullOrBlank()) {
+            Log.e(TAG, "Missing requestId or address in input data — nothing to resolve")
             return@withContext Result.success()
         }
 
@@ -58,84 +66,93 @@ class SmsHistoryWorker(
         val deviceId = prefs.deviceId.first()
 
         if (apiKey.isNullOrBlank() || deviceId.isNullOrBlank()) {
-            Log.e(TAG, "Missing apiKey/deviceId — reporting failure for job $jobId")
+            Log.e(TAG, "Missing apiKey/deviceId — reporting failure for request $requestId")
             return@withContext post(
-                SubmitHistoryResultRequest(
-                    apiKey = apiKey.orEmpty(),
+                apiKey.orEmpty(),
+                failureBody(
                     deviceId = deviceId.orEmpty(),
-                    jobId = jobId,
-                    failed = true,
-                    failureReason = "Device credentials not available"
+                    requestId = requestId,
+                    address = address,
+                    pageSize = pageSize,
+                    pageNumber = pageNumber,
+                    reason = HistoryFailureReason.GATEWAY_FAILURE,
                 )
             )
         }
 
         if (!hasReadSmsPermission()) {
-            Log.w(TAG, "READ_SMS not granted — reporting failure for job $jobId")
+            Log.w(TAG, "READ_SMS not granted — reporting failure for request $requestId")
             return@withContext post(
-                SubmitHistoryResultRequest(
-                    apiKey = apiKey,
-                    deviceId = deviceId,
-                    jobId = jobId,
-                    failed = true,
-                    failureReason = "READ_SMS permission not granted"
-                )
+                apiKey,
+                failureBody(deviceId, requestId, address, pageSize, pageNumber, HistoryFailureReason.PERMISSION_DENIED)
             )
         }
 
         val messages: List<HistoryMessageDto> = try {
-            SmsHistoryReader(applicationContext).readHistory(address)
+            SmsHistoryReader(applicationContext).readPage(address, pageSize, pageNumber)
         } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException reading SMS for job $jobId", e)
+            Log.e(TAG, "SecurityException reading SMS for request $requestId", e)
             return@withContext post(
-                SubmitHistoryResultRequest(
-                    apiKey = apiKey,
-                    deviceId = deviceId,
-                    jobId = jobId,
-                    failed = true,
-                    failureReason = "READ_SMS permission not granted"
-                )
+                apiKey,
+                failureBody(deviceId, requestId, address, pageSize, pageNumber, HistoryFailureReason.PERMISSION_DENIED)
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to read SMS history for job $jobId", e)
+            Log.e(TAG, "Failed to read SMS history for request $requestId", e)
             return@withContext post(
-                SubmitHistoryResultRequest(
-                    apiKey = apiKey,
-                    deviceId = deviceId,
-                    jobId = jobId,
-                    failed = true,
-                    failureReason = "Failed to read local SMS: ${e.message}"
-                )
+                apiKey,
+                failureBody(deviceId, requestId, address, pageSize, pageNumber, HistoryFailureReason.GATEWAY_FAILURE)
             )
         }
 
-        // Empty list is a valid COMPLETED result, not a failure.
-        Log.d(TAG, "Read ${messages.size} messages for job $jobId — submitting")
+        // Empty list is a valid success, not a failure.
+        Log.d(TAG, "Read ${messages.size} messages for request $requestId — submitting")
         return@withContext post(
+            apiKey,
             SubmitHistoryResultRequest(
-                apiKey = apiKey,
                 deviceId = deviceId,
-                jobId = jobId,
+                requestId = requestId,
+                address = address,
+                pageSize = pageSize,
+                pageNumber = pageNumber,
                 failed = false,
-                messages = messages
+                reason = null,
+                messages = messages,
             )
         )
     }
 
+    private fun failureBody(
+        deviceId: String,
+        requestId: String,
+        address: String,
+        pageSize: Int,
+        pageNumber: Int,
+        reason: String,
+    ) = SubmitHistoryResultRequest(
+        deviceId = deviceId,
+        requestId = requestId,
+        address = address,
+        pageSize = pageSize,
+        pageNumber = pageNumber,
+        failed = true,
+        reason = reason,
+        messages = emptyList(),
+    )
+
     /**
      * POSTs the result. A [Result.failure] from the API means a transient network
-     * error — retry once. Any HTTP response received (including non-2xx) resolves as
-     * success and stops the worker.
+     * error — retry once. Any HTTP response received (including terminal 410/403/
+     * 401/400) resolves as success and stops the worker; those are never retried.
      */
-    private suspend fun post(request: SubmitHistoryResultRequest): Result {
-        val result = apiService.submitHistoryResult(request)
+    private suspend fun post(apiKey: String, request: SubmitHistoryResultRequest): Result {
+        val result = apiService.submitHistoryResult(apiKey, request)
         return if (result.isSuccess) {
             Result.success()
         } else if (runAttemptCount + 1 < MAX_ATTEMPTS) {
-            Log.w(TAG, "POST failed (attempt ${runAttemptCount + 1}) — retrying job ${request.jobId}")
+            Log.w(TAG, "POST failed (attempt ${runAttemptCount + 1}) — retrying request ${request.requestId}")
             Result.retry()
         } else {
-            Log.e(TAG, "POST failed after $MAX_ATTEMPTS attempts — giving up on job ${request.jobId}")
+            Log.e(TAG, "POST failed after $MAX_ATTEMPTS attempts — giving up on request ${request.requestId}")
             Result.success()
         }
     }

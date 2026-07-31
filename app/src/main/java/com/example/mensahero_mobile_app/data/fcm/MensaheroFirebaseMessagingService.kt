@@ -40,22 +40,28 @@ class MensaheroFirebaseMessagingService : FirebaseMessagingService() {
             }
 
             "SMS_HISTORY" -> {
-                val jobId = message.data["jobId"]
+                val requestId = message.data["requestId"]
                 val address = message.data["address"]
-                if (jobId != null && address != null) {
+                if (requestId != null && address != null) {
+                    // All FCM data values arrive as strings; parse the paging ints.
+                    val pageSize = (message.data["pageSize"]?.toIntOrNull() ?: 25).coerceIn(1, 25)
+                    val pageNumber = (message.data["pageNumber"]?.toIntOrNull() ?: 0).coerceAtLeast(0)
+
                     val work = OneTimeWorkRequestBuilder<SmsHistoryWorker>()
                         .setInputData(
                             workDataOf(
-                                SmsHistoryWorker.KEY_JOB_ID to jobId,
-                                SmsHistoryWorker.KEY_ADDRESS to address
+                                SmsHistoryWorker.KEY_REQUEST_ID to requestId,
+                                SmsHistoryWorker.KEY_ADDRESS to address,
+                                SmsHistoryWorker.KEY_PAGE_SIZE to pageSize,
+                                SmsHistoryWorker.KEY_PAGE_NUMBER to pageNumber
                             )
                         )
                         .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                         .build()
                     WorkManager.getInstance(applicationContext).enqueue(work)
-                    Log.d("FCM", "SmsHistoryWorker enqueued for job $jobId")
+                    Log.d("FCM", "SmsHistoryWorker enqueued for request $requestId (page $pageNumber, size $pageSize)")
                 } else {
-                    Log.w("FCM", "SMS_HISTORY missing jobId/address — ignoring")
+                    Log.w("FCM", "SMS_HISTORY missing requestId/address — ignoring")
                 }
             }
         }

@@ -109,17 +109,17 @@ class MensaheroApiService {
      * throw — it resolves as [Result.success]. Only genuine network/IO failures throw
      * and surface as [Result.failure], which the caller may treat as transient.
      */
-    suspend fun submitHistoryResult(request: SubmitHistoryResultRequest): Result<Unit> {
+    suspend fun submitHistoryResult(apiKey: String, request: SubmitHistoryResultRequest): Result<Unit> {
         return try {
             val response = client.post("${BuildConfig.API_URL}/api/messages/history/result") {
-                header(HttpHeaders.Authorization, "Bearer ${request.apiKey}")
+                header(HttpHeaders.Authorization, "Bearer $apiKey")
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
-            Log.d("SmsHistory", "history/result status=${response.status} jobId=${request.jobId} failed=${request.failed}")
+            Log.d("SmsHistory", "history/result status=${response.status} requestId=${request.requestId} failed=${request.failed}")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("SmsHistory", "history/result POST failed jobId=${request.jobId}: ${e.message}", e)
+            Log.e("SmsHistory", "history/result POST failed requestId=${request.requestId}: ${e.message}", e)
             Result.failure(e)
         }
     }
