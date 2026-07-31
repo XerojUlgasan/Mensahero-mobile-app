@@ -13,11 +13,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
@@ -35,8 +37,8 @@ class MensaheroApiService {
     suspend fun fetchMessages(apiKey: String, deviceId: String): Result<List<Message>> {
         return try {
             val response: HttpResponse = client.get("${BuildConfig.API_URL}/api/messages/fetch") {
+                header(HttpHeaders.Authorization, "Bearer $apiKey")
                 url {
-                    parameters.append("apiKey", apiKey)
                     parameters.append("deviceId", deviceId)
                 }
             }
@@ -50,9 +52,7 @@ class MensaheroApiService {
     suspend fun updateMessages(apiKey: String, updates: List<MessageUpdateRequest>): Result<Unit> {
         return try {
             client.post("${BuildConfig.API_URL}/api/messages/update") {
-                url {
-                    parameters.append("apiKey", apiKey)
-                }
+                header(HttpHeaders.Authorization, "Bearer $apiKey")
                 contentType(ContentType.Application.Json)
                 setBody(updates)
             }
@@ -74,6 +74,7 @@ class MensaheroApiService {
     suspend fun registerDevice(request: DeviceRegistrationRequest): Result<DeviceRegistrationResponse> {
         return try {
             val response: HttpResponse = client.post("${BuildConfig.API_URL}/api/devices/register") {
+                header(HttpHeaders.Authorization, "Bearer ${request.api_key}")
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -88,6 +89,7 @@ class MensaheroApiService {
         return try {
             Log.d("FCMToken", "Sending update request: device_id=${request.device_id}, fcm_token=${request.fcm_token}")
             val response = client.patch("${BuildConfig.API_URL}/api/devices/update") {
+                header(HttpHeaders.Authorization, "Bearer ${request.api_key}")
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -110,6 +112,7 @@ class MensaheroApiService {
     suspend fun submitHistoryResult(request: SubmitHistoryResultRequest): Result<Unit> {
         return try {
             val response = client.post("${BuildConfig.API_URL}/api/messages/history/result") {
+                header(HttpHeaders.Authorization, "Bearer ${request.apiKey}")
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -124,8 +127,8 @@ class MensaheroApiService {
     suspend fun checkDevice(apiKey: String, deviceId: String): Result<DeviceCheckResponse> {
         return try {
             val response: HttpResponse = client.get("${BuildConfig.API_URL}/api/devices/check") {
+                header(HttpHeaders.Authorization, "Bearer $apiKey")
                 url {
-                    parameters.append("apiKey", apiKey)
                     parameters.append("deviceId", deviceId)
                 }
             }
