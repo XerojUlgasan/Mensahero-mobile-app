@@ -24,6 +24,7 @@ fun DashboardScreenWrapper(
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.SEND_SMS,
             Manifest.permission.READ_SMS,
+            Manifest.permission.RECEIVE_SMS,
             Manifest.permission.POST_NOTIFICATIONS
         )
     )
@@ -36,7 +37,8 @@ fun DashboardScreenWrapper(
         Log.d("DashboardScreenWrapper", "READ_PHONE_STATE granted: ${permissions.permissions[0].status.isGranted}")
         Log.d("DashboardScreenWrapper", "SEND_SMS granted: ${permissions.permissions[1].status.isGranted}")
         Log.d("DashboardScreenWrapper", "READ_SMS granted: ${permissions.permissions[2].status.isGranted}")
-        Log.d("DashboardScreenWrapper", "POST_NOTIFICATIONS granted: ${permissions.permissions[3].status.isGranted}")
+        Log.d("DashboardScreenWrapper", "RECEIVE_SMS granted: ${permissions.permissions[3].status.isGranted}")
+        Log.d("DashboardScreenWrapper", "POST_NOTIFICATIONS granted: ${permissions.permissions[4].status.isGranted}")
 
         if (!permissions.allPermissionsGranted) {
             Log.d("DashboardScreenWrapper", "Requesting permissions...")

@@ -8,6 +8,7 @@ import com.example.mensahero_mobile_app.data.model.DeviceRegistrationResponse
 import com.example.mensahero_mobile_app.data.model.DeviceUpdateRequest
 import com.example.mensahero_mobile_app.data.model.Message
 import com.example.mensahero_mobile_app.data.model.MessageUpdateRequest
+import com.example.mensahero_mobile_app.data.model.ReceivedSmsBody
 import com.example.mensahero_mobile_app.data.model.SubmitHistoryResultRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -120,6 +121,29 @@ class MensaheroApiService {
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("SmsHistory", "history/result POST failed requestId=${request.requestId}: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Relays an incoming SMS to the backend.
+     *
+     * The client is not configured with expectSuccess, so a non-2xx response does NOT
+     * throw — it resolves as [Result.success] carrying the HTTP status code, letting the
+     * caller decide whether to retry (5xx) or give up (400/401/403/404). Only genuine
+     * network/IO failures resolve as [Result.failure], which the caller retries.
+     */
+    suspend fun relayReceivedSms(apiKey: String, body: ReceivedSmsBody): Result<Int> {
+        return try {
+            val response = client.post("${BuildConfig.API_URL}/api/messages/gateway/received") {
+                header(HttpHeaders.Authorization, "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            Log.d("SmsRelay", "gateway/received status=${response.status.value} from=${body.from}")
+            Result.success(response.status.value)
+        } catch (e: Exception) {
+            Log.e("SmsRelay", "gateway/received POST failed from=${body.from}: ${e.message}", e)
             Result.failure(e)
         }
     }

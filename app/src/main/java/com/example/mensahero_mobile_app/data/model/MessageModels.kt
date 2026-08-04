@@ -60,6 +60,19 @@ data class DeviceCheckResponse(
     val updated_at: String
 )
 
+/**
+ * Wire body for POST /api/messages/gateway/received (incoming SMS relay).
+ *
+ * The API key is sent in the `Authorization: Bearer mh_live_...` header, NOT here.
+ * No timestamp is sent — the server stamps `receivedAt` itself.
+ */
+@Serializable
+data class ReceivedSmsBody(
+    val deviceId: String, // device UUID string (Device.id)
+    val from: String,     // sender's number, e.g. "+639171234567"
+    val message: String   // full SMS text (multipart already concatenated)
+)
+
 @Serializable
 data class HistoryMessageDto(
     val body: String,
